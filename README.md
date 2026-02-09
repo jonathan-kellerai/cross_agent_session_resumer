@@ -207,6 +207,7 @@ casr completions fish > ~/.config/fish/completions/casr.fish
 export CLAUDE_HOME="$HOME/.claude"
 export CODEX_HOME="$HOME/.codex"
 export GEMINI_HOME="$HOME/.gemini"
+export CURSOR_HOME="$HOME/.config/Cursor"
 
 # Logging verbosity (alternative to --verbose / --trace)
 export RUST_LOG="casr=debug"
@@ -310,6 +311,11 @@ Output
 - JSON includes `sessionId`, `projectHash`, `messages`, and temporal fields.
 - Writer emits `user` and `model` message types with provider-compatible structure.
 
+### Cursor
+- Source path pattern: `~/.config/Cursor/User/globalStorage/state.vscdb`
+- SQLite `cursorDiskKV` keys: `composerData:<id>` and `bubbleId:<composerId>:<bubbleId>`.
+- `casr` uses a virtual per-session path (`state.vscdb/<encoded-session-id>`) for deterministic lookup and verification.
+
 ## Validation Rules
 
 Hard-stop errors:
@@ -373,7 +379,7 @@ bash scripts/real_provider_smoke.sh
 ```
 
 Notes:
-- Uses real provider CLIs and real provider homes (`CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME`).
+- Uses real provider CLIs and real provider homes (`CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME`, `CURSOR_HOME`).
 - Explicitly reports `PASS`/`FAIL`/`SKIP` for each core path: `CC<->Codex`, `CC<->Gemini`, `Codex<->Gemini`.
 - Writes detailed artifacts (command transcript, per-path stdout/stderr, matrix) under `artifacts/real-smoke/<timestamp>/`.
 
