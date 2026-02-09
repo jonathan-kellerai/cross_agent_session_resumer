@@ -2,7 +2,7 @@
 //!
 //! Uses `assert_cmd` to invoke the compiled binary and validate output.
 //! All tests use temp directories with env overrides (`CLAUDE_HOME`,
-//! `CODEX_HOME`, `GEMINI_HOME`) so they never touch real provider data.
+//! `CODEX_HOME`, `GEMINI_HOME`, `CURSOR_HOME`) so they never touch real provider data.
 
 use std::fs;
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ fn fixtures_dir() -> PathBuf {
 
 /// Build a `Command` for the casr binary with isolated provider homes.
 ///
-/// Sets `CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME` to subdirs of the
+/// Sets `CLAUDE_HOME`, `CODEX_HOME`, `GEMINI_HOME`, `CURSOR_HOME` to subdirs of the
 /// provided temp dir so the CLI never touches real provider data.
 fn casr_cmd(tmp: &TempDir) -> Command {
     #[allow(deprecated)]
@@ -26,6 +26,7 @@ fn casr_cmd(tmp: &TempDir) -> Command {
     cmd.env("CLAUDE_HOME", tmp.path().join("claude"))
         .env("CODEX_HOME", tmp.path().join("codex"))
         .env("GEMINI_HOME", tmp.path().join("gemini"))
+        .env("CURSOR_HOME", tmp.path().join("cursor"))
         // Suppress colored output in tests.
         .env("NO_COLOR", "1");
     cmd
@@ -179,7 +180,8 @@ fn cli_providers_succeeds() {
         .success()
         .stdout(predicate::str::contains("Claude Code"))
         .stdout(predicate::str::contains("Codex"))
-        .stdout(predicate::str::contains("Gemini"));
+        .stdout(predicate::str::contains("Gemini"))
+        .stdout(predicate::str::contains("Cursor"));
 }
 
 #[test]
@@ -448,6 +450,65 @@ fn cli_resume_cc_to_gemini_works() {
         1,
         "Exactly one Gemini session file should be written"
     );
+}
+
+#[test]
+fn cli_resume_cc_to_cursor_works_and_is_discoverable() {
+    let tmp = TempDir::new().unwrap();
+    let session_id = setup_cc_fixture(&tmp, "cc_simple");
+
+    let output = casr_cmd(&tmp)
+        .args(["--json", "resume", "cur", &session_id])
+        .output()
+        .expect("resume should run");
+    assert!(
+        output.status.success(),
+        "CC→Cursor conversion should succeed"
+    );
+
+    let parsed: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("resume --json output should parse");
+    assert_eq!(parsed["ok"], true);
+    assert_eq!(parsed["target_provider"].as_str().unwrap(), "cursor");
+    let cursor_session_id = parsed["target_session_id"]
+        .as_str()
+        .expect("target_session_id should be present for non-dry-run");
+
+    let cursor_db = tmp.path().join("cursor/User/globalStorage/state.vscdb");
+    assert!(
+        cursor_db.exists(),
+        "Cursor DB should exist after CC→Cursor conversion"
+    );
+
+    casr_cmd(&tmp)
+        .args(["--json", "info", cursor_session_id])
+        .assert()
+        .success();
+}
+
+#[test]
+fn cli_resume_cursor_to_cc_works_with_source_hint() {
+    let tmp = TempDir::new().unwrap();
+    let source_id = setup_cc_fixture(&tmp, "cc_simple");
+
+    let cursor_result = casr_cmd(&tmp)
+        .args(["--json", "resume", "cur", &source_id])
+        .output()
+        .expect("CC→Cursor seed conversion should run");
+    assert!(cursor_result.status.success());
+    let cursor_json: serde_json::Value =
+        serde_json::from_slice(&cursor_result.stdout).expect("seed conversion JSON should parse");
+    let cursor_session_id = cursor_json["target_session_id"]
+        .as_str()
+        .expect("cursor target_session_id should be present");
+
+    casr_cmd(&tmp)
+        .args(["resume", "cc", cursor_session_id, "--source", "cur"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Converted"))
+        .stdout(predicate::str::contains("cursor"))
+        .stdout(predicate::str::contains("claude-code"));
 }
 
 // ---------------------------------------------------------------------------

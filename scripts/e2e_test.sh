@@ -47,6 +47,7 @@ trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 export CLAUDE_HOME="$TMPDIR_ROOT/claude"
 export CODEX_HOME="$TMPDIR_ROOT/codex"
 export GEMINI_HOME="$TMPDIR_ROOT/gemini"
+export CURSOR_HOME="$TMPDIR_ROOT/cursor"
 export NO_COLOR=1
 
 # ---------------------------------------------------------------------------
@@ -204,7 +205,7 @@ setup_gemini_fixture() {
 }
 
 reset_env() {
-    rm -rf "$CLAUDE_HOME" "$CODEX_HOME" "$GEMINI_HOME"
+    rm -rf "$CLAUDE_HOME" "$CODEX_HOME" "$GEMINI_HOME" "$CURSOR_HOME"
 }
 
 # ---------------------------------------------------------------------------
@@ -258,6 +259,7 @@ assert_exit_ok "casr providers succeeds"
 assert_stdout_contains "providers lists Claude Code" "Claude Code"
 assert_stdout_contains "providers lists Codex" "Codex"
 assert_stdout_contains "providers lists Gemini" "Gemini"
+assert_stdout_contains "providers lists Cursor" "Cursor"
 
 log "TEST: Providers --json"
 run_casr "providers json" --json providers
@@ -383,6 +385,29 @@ if [[ "$gemini_files" -eq 1 ]]; then
 else
     fail "Exactly one Gemini session file created" "1" "$gemini_files"
 fi
+
+# ===========================================================================
+# TEST: Resume — CC → Cursor
+# ===========================================================================
+
+log "TEST: Resume CC → Cursor"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->cur" --json resume cur "$cc_sid"
+assert_exit_ok "CC→Cursor write succeeds"
+assert_valid_json "CC→Cursor JSON is valid"
+cursor_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$cursor_sid" ]]; then
+    pass "CC→Cursor JSON includes target_session_id"
+else
+    fail "CC→Cursor JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+assert_file_exists "Cursor DB exists after conversion" "$CURSOR_HOME/User/globalStorage/state.vscdb"
+
+log "TEST: Resume Cursor → CC"
+run_casr "resume cur->cc" resume cc "$cursor_sid" --source cur
+assert_exit_ok "Cursor→CC write succeeds"
+assert_stdout_contains "cursor→cc shows claude-code" "claude-code"
 
 # ===========================================================================
 # TEST: Resume — Codex → CC

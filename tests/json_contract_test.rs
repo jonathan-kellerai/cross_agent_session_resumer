@@ -27,6 +27,7 @@ fn casr_cmd(tmp: &TempDir) -> Command {
     cmd.env("CLAUDE_HOME", tmp.path().join("claude"))
         .env("CODEX_HOME", tmp.path().join("codex"))
         .env("GEMINI_HOME", tmp.path().join("gemini"))
+        .env("CURSOR_HOME", tmp.path().join("cursor"))
         .env("NO_COLOR", "1");
     cmd
 }
@@ -172,7 +173,9 @@ fn assert_uint(val: &serde_json::Value, field: &str, ctx: &str) {
 
 /// Assert a JSON object contains exactly the expected keys (no extra, no missing).
 fn assert_exact_keys(obj: &serde_json::Value, expected: &[&str], ctx: &str) {
-    let map = obj.as_object().unwrap_or_else(|| panic!("{ctx}: expected object"));
+    let map = obj
+        .as_object()
+        .unwrap_or_else(|| panic!("{ctx}: expected object"));
     let actual: std::collections::BTreeSet<&str> = map.keys().map(|k| k.as_str()).collect();
     let expect: std::collections::BTreeSet<&str> = expected.iter().copied().collect();
 
@@ -226,7 +229,11 @@ fn contract_providers_json_shape() {
     let arr = parsed
         .as_array()
         .expect("providers --json should be an array");
-    assert_eq!(arr.len(), 3, "should list 3 providers (CC, Codex, Gemini)");
+    assert_eq!(
+        arr.len(),
+        4,
+        "should list 4 providers (CC, Codex, Gemini, Cursor)"
+    );
 
     for (i, item) in arr.iter().enumerate() {
         assert_provider_object(item, i);
@@ -253,6 +260,7 @@ fn contract_providers_known_slugs() {
     assert!(slugs.contains(&"claude-code"), "should contain claude-code");
     assert!(slugs.contains(&"codex"), "should contain codex");
     assert!(slugs.contains(&"gemini"), "should contain gemini");
+    assert!(slugs.contains(&"cursor"), "should contain cursor");
 }
 
 #[test]
@@ -278,6 +286,7 @@ fn contract_providers_aliases_match_slugs() {
             "claude-code" => assert_eq!(*alias, "cc"),
             "codex" => assert_eq!(*alias, "cod"),
             "gemini" => assert_eq!(*alias, "gmi"),
+            "cursor" => assert_eq!(*alias, "cur"),
             other => panic!("Unexpected slug: {other}"),
         }
     }
@@ -408,10 +417,7 @@ fn contract_list_json_messages_is_nonnegative() {
     let tmp = TempDir::new().unwrap();
     setup_cc_fixture(&tmp, "cc_simple");
 
-    let output = casr_cmd(&tmp)
-        .args(["--json", "list"])
-        .output()
-        .unwrap();
+    let output = casr_cmd(&tmp).args(["--json", "list"]).output().unwrap();
 
     let parsed: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
@@ -891,15 +897,12 @@ fn contract_list_provider_field_matches_slug() {
     setup_codex_fixture(&tmp, "codex_modern", "jsonl");
     setup_gemini_fixture(&tmp, "gmi_simple");
 
-    let output = casr_cmd(&tmp)
-        .args(["--json", "list"])
-        .output()
-        .unwrap();
+    let output = casr_cmd(&tmp).args(["--json", "list"]).output().unwrap();
 
     let parsed: serde_json::Value =
         serde_json::from_str(&String::from_utf8_lossy(&output.stdout)).unwrap();
 
-    let valid_slugs = ["claude-code", "codex", "gemini"];
+    let valid_slugs = ["claude-code", "codex", "gemini", "cursor"];
     for item in parsed.as_array().unwrap() {
         let provider = item["provider"].as_str().unwrap();
         assert!(

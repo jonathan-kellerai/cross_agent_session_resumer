@@ -1,4 +1,4 @@
-//! Round-trip fidelity tests for all 6 provider conversion paths.
+//! Round-trip fidelity tests for the core 6 conversion paths plus Cursor paths.
 //!
 //! Each test: read source fixture → canonical → write to target (temp dir) →
 //! read back → compare canonical fields against original.
@@ -26,6 +26,7 @@ use std::sync::{LazyLock, Mutex};
 use casr::model::{CanonicalSession, MessageRole};
 use casr::providers::claude_code::ClaudeCode;
 use casr::providers::codex::Codex;
+use casr::providers::cursor::Cursor;
 use casr::providers::gemini::Gemini;
 use casr::providers::{Provider, WriteOptions};
 
@@ -36,6 +37,7 @@ use casr::providers::{Provider, WriteOptions};
 static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static GEMINI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CURSOR_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 struct EnvGuard {
     key: &'static str,
@@ -209,7 +211,67 @@ fn roundtrip_cc_to_gemini() {
 }
 
 // ===========================================================================
-// Path 3: Codex → CC
+// Path 3: CC → Cursor
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_cursor() {
+    let _lock = CURSOR_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CURSOR_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = Cursor
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→Cur: write should succeed");
+
+    let readback = Cursor
+        .read_session(&written.paths[0])
+        .expect("CC→Cur: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→Cur");
+    assert_new_session_id(&readback, "CC→Cur");
+}
+
+// ===========================================================================
+// Path 4: Cursor → CC
+// ===========================================================================
+
+#[test]
+fn roundtrip_cursor_to_cc() {
+    let cursor_canonical = {
+        let _cursor_lock = CURSOR_ENV.lock().unwrap();
+        let cursor_tmp = tempfile::TempDir::new().unwrap();
+        let _cursor_env = EnvGuard::set("CURSOR_HOME", cursor_tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written_cursor = Cursor
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Cur write should succeed");
+
+        Cursor
+            .read_session(&written_cursor.paths[0])
+            .expect("seed Cur read-back should succeed")
+    };
+
+    let _cc_lock = CC_ENV.lock().unwrap();
+    let cc_tmp = tempfile::TempDir::new().unwrap();
+    let _cc_env = EnvGuard::set("CLAUDE_HOME", cc_tmp.path());
+
+    let written_cc = ClaudeCode
+        .write_session(&cursor_canonical, &WriteOptions { force: false })
+        .expect("Cur→CC: write should succeed");
+
+    let readback_cc = ClaudeCode
+        .read_session(&written_cc.paths[0])
+        .expect("Cur→CC: read-back should succeed");
+
+    assert_roundtrip_fidelity(&cursor_canonical, &readback_cc, "Cur→CC");
+    assert_new_session_id(&readback_cc, "Cur→CC");
+}
+
+// ===========================================================================
+// Path 5: Codex → CC
 // ===========================================================================
 
 #[test]
@@ -238,7 +300,7 @@ fn roundtrip_codex_to_cc() {
 }
 
 // ===========================================================================
-// Path 4: Codex → Gemini
+// Path 6: Codex → Gemini
 // ===========================================================================
 
 #[test]
@@ -263,7 +325,7 @@ fn roundtrip_codex_to_gemini() {
 }
 
 // ===========================================================================
-// Path 5: Gemini → CC
+// Path 7: Gemini → CC
 // ===========================================================================
 
 #[test]
@@ -288,7 +350,7 @@ fn roundtrip_gemini_to_cc() {
 }
 
 // ===========================================================================
-// Path 6: Gemini → Codex
+// Path 8: Gemini → Codex
 // ===========================================================================
 
 #[test]
