@@ -106,6 +106,19 @@ impl Amp {
         uuid::Uuid::parse_str(rest).is_ok()
     }
 
+    fn owns_session_in_roots(session_id: &str, roots: &[PathBuf]) -> Option<PathBuf> {
+        if !Self::looks_like_thread_id(session_id) {
+            return None;
+        }
+        for root in roots {
+            let candidate = root.join(format!("{session_id}.json"));
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    }
+
     fn read_json(path: &Path) -> anyhow::Result<serde_json::Value> {
         let content = std::fs::read_to_string(path)
             .with_context(|| format!("failed to read {}", path.display()))?;
@@ -516,16 +529,8 @@ impl Provider for Amp {
     }
 
     fn owns_session(&self, session_id: &str) -> Option<PathBuf> {
-        if !Self::looks_like_thread_id(session_id) {
-            return None;
-        }
-        for root in self.session_roots() {
-            let candidate = root.join(format!("{session_id}.json"));
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-        None
+        let roots = self.session_roots();
+        Self::owns_session_in_roots(session_id, &roots)
     }
 
     fn read_session(&self, path: &Path) -> anyhow::Result<CanonicalSession> {
@@ -1013,5 +1018,61 @@ mod tests {
     fn resume_command_contains_thread_id() {
         let cmd = <Amp as Provider>::resume_command(&Amp, "T-123");
         assert!(cmd.contains("@T-123"));
+    }
+
+    #[test]
+    fn looks_like_thread_id_valid_and_invalid() {
+        assert!(Amp::looks_like_thread_id(
+            "T-550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(!Amp::looks_like_thread_id(
+            "550e8400-e29b-41d4-a716-446655440000"
+        ));
+        assert!(!Amp::looks_like_thread_id("T-not-a-uuid"));
+        assert!(!Amp::looks_like_thread_id("T-"));
+    }
+
+    #[test]
+    fn file_uri_to_path_parses_standard_localhost_and_encoded_forms() {
+        assert_eq!(
+            Amp::file_uri_to_path("file:///data/projects/ws"),
+            Some(PathBuf::from("/data/projects/ws"))
+        );
+        assert_eq!(
+            Amp::file_uri_to_path("file://localhost//data/projects/ws"),
+            Some(PathBuf::from("/data/projects/ws"))
+        );
+        assert_eq!(
+            Amp::file_uri_to_path("file:///data/projects/my%20ws"),
+            Some(PathBuf::from("/data/projects/my ws"))
+        );
+        assert_eq!(Amp::file_uri_to_path("http://example.com"), None);
+    }
+
+    #[test]
+    fn provider_metadata() {
+        assert_eq!(Amp.name(), "Amp");
+        assert_eq!(Amp.slug(), "amp");
+        assert_eq!(Amp.cli_alias(), "amp");
+    }
+
+    #[test]
+    fn owns_session_in_roots_finds_existing_thread_file() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let root = dir.path().join("threads");
+        std::fs::create_dir_all(&root).expect("threads root");
+
+        let sid = "T-550e8400-e29b-41d4-a716-446655440000";
+        let path = root.join(format!("{sid}.json"));
+        std::fs::write(&path, "{}").expect("seed thread file");
+
+        assert_eq!(
+            Amp::owns_session_in_roots(sid, std::slice::from_ref(&root)).as_deref(),
+            Some(path.as_path())
+        );
+        assert_eq!(
+            Amp::owns_session_in_roots("not-a-thread", std::slice::from_ref(&root)),
+            None
+        );
     }
 }
