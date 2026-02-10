@@ -279,6 +279,12 @@ assert_stdout_contains "providers lists Cline" "Cline"
 assert_stdout_contains "providers lists Aider" "Aider"
 assert_stdout_contains "providers lists Amp" "Amp"
 assert_stdout_contains "providers lists OpenCode" "OpenCode"
+assert_stdout_contains "providers lists ChatGPT" "ChatGPT"
+assert_stdout_contains "providers lists ClawdBot" "ClawdBot"
+assert_stdout_contains "providers lists Vibe" "Vibe"
+assert_stdout_contains "providers lists Factory" "Factory"
+assert_stdout_contains "providers lists OpenClaw" "OpenClaw"
+assert_stdout_contains "providers lists Pi-Agent" "Pi-Agent"
 
 log "TEST: Providers --json"
 run_casr "providers json" --json providers
@@ -568,6 +574,138 @@ reset_env
 gmi_sid=$(setup_gemini_fixture "gmi_simple")
 run_casr "resume gmi->cod" resume cod "$gmi_sid"
 assert_exit_ok "Gemini→Codex write succeeds"
+
+# ===========================================================================
+# TEST: Resume — CC → ChatGPT
+# ===========================================================================
+
+log "TEST: Resume CC → ChatGPT"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->gpt" --json resume gpt "$cc_sid"
+assert_exit_ok "CC→ChatGPT write succeeds"
+assert_valid_json "CC→ChatGPT JSON is valid"
+gpt_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$gpt_sid" ]]; then
+    pass "CC→ChatGPT JSON includes target_session_id"
+else
+    fail "CC→ChatGPT JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume ChatGPT → CC"
+run_casr "resume gpt->cc" resume cc "$gpt_sid" --source gpt
+assert_exit_ok "ChatGPT→CC write succeeds"
+assert_stdout_contains "chatgpt→cc shows claude-code" "claude-code"
+
+# ===========================================================================
+# TEST: Resume — CC → ClawdBot
+# ===========================================================================
+
+log "TEST: Resume CC → ClawdBot"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->cwb" --json resume cwb "$cc_sid"
+assert_exit_ok "CC→ClawdBot write succeeds"
+assert_valid_json "CC→ClawdBot JSON is valid"
+cwb_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$cwb_sid" ]]; then
+    pass "CC→ClawdBot JSON includes target_session_id"
+else
+    fail "CC→ClawdBot JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume ClawdBot → CC"
+run_casr "resume cwb->cc" resume cc "$cwb_sid" --source cwb
+assert_exit_ok "ClawdBot→CC write succeeds"
+assert_stdout_contains "clawdbot→cc shows claude-code" "claude-code"
+
+# ===========================================================================
+# TEST: Resume — CC → Vibe
+# ===========================================================================
+
+log "TEST: Resume CC → Vibe"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->vib" --json resume vib "$cc_sid"
+assert_exit_ok "CC→Vibe write succeeds"
+assert_valid_json "CC→Vibe JSON is valid"
+vib_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$vib_sid" ]]; then
+    pass "CC→Vibe JSON includes target_session_id"
+else
+    fail "CC→Vibe JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume Vibe → CC"
+run_casr "resume vib->cc" resume cc "$vib_sid" --source vib
+assert_exit_ok "Vibe→CC write succeeds"
+assert_stdout_contains "vibe→cc shows claude-code" "claude-code"
+
+# ===========================================================================
+# TEST: Resume — CC → Factory
+# ===========================================================================
+
+log "TEST: Resume CC → Factory"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->fac" --json resume fac "$cc_sid"
+assert_exit_ok "CC→Factory write succeeds"
+assert_valid_json "CC→Factory JSON is valid"
+fac_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$fac_sid" ]]; then
+    pass "CC→Factory JSON includes target_session_id"
+else
+    fail "CC→Factory JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume Factory → CC"
+run_casr "resume fac->cc" resume cc "$fac_sid" --source fac
+assert_exit_ok "Factory→CC write succeeds"
+assert_stdout_contains "factory→cc shows claude-code" "claude-code"
+
+# ===========================================================================
+# TEST: Resume — CC → OpenClaw
+# ===========================================================================
+
+log "TEST: Resume CC → OpenClaw"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->ocl" --json resume ocl "$cc_sid"
+assert_exit_ok "CC→OpenClaw write succeeds"
+assert_valid_json "CC→OpenClaw JSON is valid"
+ocl_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$ocl_sid" ]]; then
+    pass "CC→OpenClaw JSON includes target_session_id"
+else
+    fail "CC→OpenClaw JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume OpenClaw → CC"
+run_casr "resume ocl->cc" resume cc "$ocl_sid" --source ocl
+assert_exit_ok "OpenClaw→CC write succeeds"
+assert_stdout_contains "openclaw→cc shows claude-code" "claude-code"
+
+# ===========================================================================
+# TEST: Resume — CC → PiAgent
+# ===========================================================================
+
+log "TEST: Resume CC → PiAgent"
+reset_env
+cc_sid=$(setup_cc_fixture "cc_simple")
+run_casr "resume cc->pi" --json resume pi "$cc_sid"
+assert_exit_ok "CC→PiAgent write succeeds"
+assert_valid_json "CC→PiAgent JSON is valid"
+pi_sid=$(echo "$LAST_STDOUT" | jq -r '.target_session_id // empty')
+if [[ -n "$pi_sid" ]]; then
+    pass "CC→PiAgent JSON includes target_session_id"
+else
+    fail "CC→PiAgent JSON includes target_session_id" "non-empty id" "<empty>"
+fi
+
+log "TEST: Resume PiAgent → CC"
+run_casr "resume pi->cc" resume cc "$pi_sid" --source pi
+assert_exit_ok "PiAgent→CC write succeeds"
+assert_stdout_contains "piagent→cc shows claude-code" "claude-code"
 
 # ===========================================================================
 # TEST: Error cases
