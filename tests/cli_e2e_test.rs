@@ -1258,3 +1258,28 @@ fn cli_trace_flag_accepted() {
         .assert()
         .success();
 }
+
+#[test]
+fn cli_verbose_emits_debug_logs() {
+    let tmp = TempDir::new().unwrap();
+    let session_id = setup_cc_fixture(&tmp, "cc_simple");
+    casr_cmd(&tmp)
+        .args(["--verbose", "resume", "cod", &session_id, "--dry-run"])
+        .assert()
+        .success()
+        .stderr(
+            predicate::str::contains("DEBUG")
+                .and(predicate::str::contains("source session resolved")),
+        );
+}
+
+#[test]
+fn cli_trace_emits_trace_logs() {
+    let tmp = TempDir::new().unwrap();
+    let session_id = setup_cc_fixture(&tmp, "cc_simple");
+    casr_cmd(&tmp)
+        .args(["--trace", "resume", "cod", &session_id, "--dry-run"])
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("TRACE").and(predicate::str::contains("searching")));
+}

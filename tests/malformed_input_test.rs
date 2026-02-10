@@ -42,8 +42,11 @@ fn assert_empty_file_handled(provider: &dyn Provider, ext: &str) {
 /// Acceptable: Err or Ok(0 messages).
 fn assert_garbage_handled(provider: &dyn Provider, ext: &str) {
     let tmp = tempfile::NamedTempFile::with_suffix(ext).expect("create temp file");
-    std::fs::write(tmp.path(), b"\x00\x01\x02\xff\xfe\xfd\x80\x81\x82garbage\n\x00")
-        .expect("write garbage");
+    std::fs::write(
+        tmp.path(),
+        b"\x00\x01\x02\xff\xfe\xfd\x80\x81\x82garbage\n\x00",
+    )
+    .expect("write garbage");
     let result = provider.read_session(tmp.path());
     match &result {
         Err(_) => {} // Fine — explicit error for garbage.
@@ -265,18 +268,12 @@ fn malformed_aider_garbage() {
 
 #[test]
 fn malformed_cursor_empty() {
-    assert_empty_file_handled(
-        &casr::providers::cursor::Cursor,
-        ".vscdb",
-    );
+    assert_empty_file_handled(&casr::providers::cursor::Cursor, ".vscdb");
 }
 
 #[test]
 fn malformed_cursor_garbage() {
-    assert_garbage_handled(
-        &casr::providers::cursor::Cursor,
-        ".vscdb",
-    );
+    assert_garbage_handled(&casr::providers::cursor::Cursor, ".vscdb");
 }
 
 #[test]

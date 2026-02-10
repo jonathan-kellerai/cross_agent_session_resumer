@@ -308,6 +308,11 @@ impl ConversionPipeline {
         );
 
         let target_detection = target_provider.detect();
+        debug!(
+            target = target_provider.name(),
+            installed = target_detection.installed,
+            "target provider detection"
+        );
         let mut all_warnings: Vec<String> = Vec::new();
         if !target_detection.installed {
             warn!(

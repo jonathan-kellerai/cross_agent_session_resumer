@@ -6,8 +6,8 @@
 //! exercise the full pipeline with real CC/Codex/Gemini providers.
 
 use std::{
-    collections::HashMap,
-    fs,
+    collections::{BTreeMap, HashMap},
+    fmt, fs,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
@@ -17,10 +17,10 @@ use casr::{
     error::CasrError,
     model::{CanonicalMessage, CanonicalSession, MessageRole, ToolResult},
     pipeline::{ConversionPipeline, ConvertOptions, validate_session},
-    providers::{Provider, WriteOptions, WrittenSession},
     providers::claude_code::ClaudeCode,
     providers::codex::Codex,
     providers::gemini::Gemini,
+    providers::{Provider, WriteOptions, WrittenSession},
 };
 
 #[derive(Clone)]
@@ -855,8 +855,8 @@ fn seed_cc_fixture(claude_home: &Path) -> String {
 
 #[test]
 fn pipeline_real_cc_to_codex_happy_path() {
-    let _cc_lock = CC_ENV.lock().unwrap();
-    let _codex_lock = CODEX_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _codex_lock = CODEX_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
     let _codex_env = EnvGuard::set("CODEX_HOME", &tmp.path().join("codex"));
@@ -885,14 +885,17 @@ fn pipeline_real_cc_to_codex_happy_path() {
     assert_eq!(result.target_provider, "codex");
     assert!(result.written.is_some(), "should have written output");
     let written = result.written.unwrap();
-    assert!(!written.session_id.is_empty(), "target session_id should be set");
+    assert!(
+        !written.session_id.is_empty(),
+        "target session_id should be set"
+    );
     assert!(written.paths[0].exists(), "written Codex file should exist");
 }
 
 #[test]
 fn pipeline_real_cc_to_gemini_happy_path() {
-    let _cc_lock = CC_ENV.lock().unwrap();
-    let _gemini_lock = GEMINI_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _gemini_lock = GEMINI_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
     let _gemini_env = EnvGuard::set("GEMINI_HOME", &tmp.path().join("gemini"));
@@ -924,8 +927,8 @@ fn pipeline_real_cc_to_gemini_happy_path() {
 
 #[test]
 fn pipeline_real_dry_run_skips_write() {
-    let _cc_lock = CC_ENV.lock().unwrap();
-    let _codex_lock = CODEX_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _codex_lock = CODEX_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
     let _codex_env = EnvGuard::set("CODEX_HOME", &tmp.path().join("codex"));
@@ -953,12 +956,15 @@ fn pipeline_real_dry_run_skips_write() {
     assert!(result.written.is_none(), "dry-run should not write");
     // No Codex session files should exist.
     let codex_sessions = tmp.path().join("codex/sessions");
-    assert!(!codex_sessions.exists(), "dry-run should not create codex session dir");
+    assert!(
+        !codex_sessions.exists(),
+        "dry-run should not create codex session dir"
+    );
 }
 
 #[test]
 fn pipeline_real_same_provider_short_circuit() {
-    let _cc_lock = CC_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
 
@@ -994,9 +1000,9 @@ fn pipeline_real_same_provider_short_circuit() {
 
 #[test]
 fn pipeline_real_source_hint_narrows_resolution() {
-    let _cc_lock = CC_ENV.lock().unwrap();
-    let _codex_lock = CODEX_ENV.lock().unwrap();
-    let _gemini_lock = GEMINI_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _codex_lock = CODEX_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _gemini_lock = GEMINI_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
     let _codex_env = EnvGuard::set("CODEX_HOME", &tmp.path().join("codex"));
@@ -1033,8 +1039,8 @@ fn pipeline_real_source_hint_narrows_resolution() {
 
 #[test]
 fn pipeline_real_session_not_found() {
-    let _cc_lock = CC_ENV.lock().unwrap();
-    let _codex_lock = CODEX_ENV.lock().unwrap();
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _codex_lock = CODEX_ENV.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::TempDir::new().unwrap();
     let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
     let _codex_env = EnvGuard::set("CODEX_HOME", &tmp.path().join("codex"));
@@ -1087,4 +1093,144 @@ fn pipeline_real_unknown_target_alias() {
         err.downcast_ref::<CasrError>(),
         Some(CasrError::UnknownProviderAlias { .. })
     ));
+}
+
+// ---------------------------------------------------------------------------
+// Tracing / observability tests
+// ---------------------------------------------------------------------------
+
+use tracing_subscriber::prelude::*;
+
+#[derive(Debug, Clone)]
+struct CapturedEvent {
+    level: tracing::Level,
+    fields: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Default)]
+struct LogCollector {
+    events: Arc<Mutex<Vec<CapturedEvent>>>,
+}
+
+impl LogCollector {
+    fn snapshot(&self) -> Vec<CapturedEvent> {
+        self.events.lock().expect("log collector lock").clone()
+    }
+}
+
+impl<S> tracing_subscriber::Layer<S> for LogCollector
+where
+    S: tracing::Subscriber,
+{
+    fn on_event(
+        &self,
+        event: &tracing::Event<'_>,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let meta = event.metadata();
+        let mut fields = BTreeMap::new();
+        event.record(&mut FieldVisitor {
+            fields: &mut fields,
+        });
+        self.events
+            .lock()
+            .expect("log collector lock")
+            .push(CapturedEvent {
+                level: *meta.level(),
+                fields,
+            });
+    }
+}
+
+struct FieldVisitor<'a> {
+    fields: &'a mut BTreeMap<String, String>,
+}
+
+impl<'a> tracing::field::Visit for FieldVisitor<'a> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn fmt::Debug) {
+        self.fields
+            .insert(field.name().to_string(), format!("{value:?}"));
+    }
+}
+
+fn event_has_message(event: &CapturedEvent, needle: &str) -> bool {
+    event
+        .fields
+        .get("message")
+        .is_some_and(|msg| msg.contains(needle))
+}
+
+#[test]
+fn pipeline_emits_trace_events_for_detection_read_write_verify() {
+    let _cc_lock = CC_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let _codex_lock = CODEX_ENV.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _cc_env = EnvGuard::set("CLAUDE_HOME", &tmp.path().join("claude"));
+    let _codex_env = EnvGuard::set("CODEX_HOME", &tmp.path().join("codex"));
+    let cc_sid = seed_cc_fixture(&tmp.path().join("claude"));
+
+    let collector = LogCollector::default();
+    let subscriber = tracing_subscriber::registry().with(
+        collector
+            .clone()
+            .with_filter(tracing_subscriber::filter::LevelFilter::TRACE),
+    );
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let pipeline = ConversionPipeline {
+        registry: ProviderRegistry::new(vec![Box::new(ClaudeCode), Box::new(Codex)]),
+    };
+
+    pipeline
+        .convert(
+            "cod",
+            &cc_sid,
+            ConvertOptions {
+                dry_run: false,
+                force: false,
+                verbose: false,
+                enrich: false,
+                source_hint: None,
+            },
+        )
+        .expect("conversion should succeed");
+
+    let events = collector.snapshot();
+
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::INFO && event_has_message(e, "starting conversion")),
+        "missing starting conversion INFO event; got {events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::TRACE && event_has_message(e, "detection")),
+        "missing provider detection TRACE event; got {events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::DEBUG && event_has_message(e, "found Claude Code session")),
+        "missing session discovery DEBUG event; got {events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::DEBUG && event_has_message(e, "Claude Code session parsed")),
+        "missing source read DEBUG event; got {events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::INFO && event_has_message(e, "atomic write complete")),
+        "missing atomic write INFO event; got {events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e.level == tracing::Level::DEBUG && event_has_message(e, "Codex session parsed")),
+        "missing read-back verify DEBUG event; got {events:#?}"
+    );
 }
