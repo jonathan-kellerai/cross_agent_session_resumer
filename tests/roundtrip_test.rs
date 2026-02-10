@@ -1080,3 +1080,327 @@ fn roundtrip_piagent_to_cc() {
 
     assert_roundtrip_fidelity(&original, &readback, "PiAgent→CC");
 }
+
+// ===========================================================================
+// All providers → Codex roundtrip tests
+// ===========================================================================
+
+#[test]
+fn roundtrip_cursor_to_codex() {
+    let cursor_session = {
+        let _lock = CURSOR_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("CURSOR_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Cursor
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Cursor");
+        Cursor.read_session(&written.paths[0]).expect("read Cursor")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&cursor_session, &WriteOptions { force: false })
+        .expect("Cursor→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&cursor_session, &readback, "Cursor→Codex");
+}
+
+#[test]
+fn roundtrip_cline_to_codex() {
+    let cline_session = {
+        let _lock = CLINE_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("CLINE_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Cline
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Cline");
+        Cline.read_session(&written.paths[0]).expect("read Cline")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&cline_session, &WriteOptions { force: false })
+        .expect("Cline→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&cline_session, &readback, "Cline→Codex");
+}
+
+#[test]
+fn roundtrip_aider_to_codex() {
+    let aider_session = {
+        let _lock = AIDER_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("AIDER_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Aider
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Aider");
+        Aider.read_session(&written.paths[0]).expect("read Aider")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&aider_session, &WriteOptions { force: false })
+        .expect("Aider→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&aider_session, &readback, "Aider→Codex");
+}
+
+#[test]
+fn roundtrip_amp_to_codex() {
+    let amp_session = {
+        let _lock = AMP_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("AMP_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Amp
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Amp");
+        Amp.read_session(&written.paths[0]).expect("read Amp")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&amp_session, &WriteOptions { force: false })
+        .expect("Amp→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&amp_session, &readback, "Amp→Codex");
+}
+
+#[test]
+fn roundtrip_opencode_to_codex() {
+    let opencode_session = {
+        let _lock = OPENCODE_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("OPENCODE_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = OpenCode
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→OpenCode");
+        OpenCode
+            .read_session(&written.paths[0])
+            .expect("read OpenCode")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&opencode_session, &WriteOptions { force: false })
+        .expect("OpenCode→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&opencode_session, &readback, "OpenCode→Codex");
+}
+
+#[test]
+fn roundtrip_chatgpt_to_codex() {
+    let chatgpt_session = {
+        let _lock = CHATGPT_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("CHATGPT_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = ChatGpt
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→ChatGPT");
+        ChatGpt
+            .read_session(&written.paths[0])
+            .expect("read ChatGPT")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&chatgpt_session, &WriteOptions { force: false })
+        .expect("ChatGPT→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&chatgpt_session, &readback, "ChatGPT→Codex");
+}
+
+#[test]
+fn roundtrip_clawdbot_to_codex() {
+    let clawdbot_session = {
+        let _lock = CLAWDBOT_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("CLAWDBOT_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = ClawdBot
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→ClawdBot");
+        ClawdBot
+            .read_session(&written.paths[0])
+            .expect("read ClawdBot")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&clawdbot_session, &WriteOptions { force: false })
+        .expect("ClawdBot→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&clawdbot_session, &readback, "ClawdBot→Codex");
+}
+
+#[test]
+fn roundtrip_vibe_to_codex() {
+    let vibe_session = {
+        let _lock = VIBE_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("VIBE_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Vibe
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Vibe");
+        Vibe.read_session(&written.paths[0]).expect("read Vibe")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&vibe_session, &WriteOptions { force: false })
+        .expect("Vibe→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&vibe_session, &readback, "Vibe→Codex");
+}
+
+#[test]
+fn roundtrip_factory_to_codex() {
+    let factory_session = {
+        let _lock = FACTORY_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("FACTORY_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = Factory
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→Factory");
+        Factory
+            .read_session(&written.paths[0])
+            .expect("read Factory")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&factory_session, &WriteOptions { force: false })
+        .expect("Factory→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&factory_session, &readback, "Factory→Codex");
+}
+
+#[test]
+fn roundtrip_openclaw_to_codex() {
+    let openclaw_session = {
+        let _lock = OPENCLAW_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("OPENCLAW_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = OpenClaw
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→OpenClaw");
+        OpenClaw
+            .read_session(&written.paths[0])
+            .expect("read OpenClaw")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&openclaw_session, &WriteOptions { force: false })
+        .expect("OpenClaw→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&openclaw_session, &readback, "OpenClaw→Codex");
+}
+
+#[test]
+fn roundtrip_piagent_to_codex() {
+    let piagent_session = {
+        let _lock = PIAGENT_ENV.lock().unwrap();
+        let tmp = tempfile::TempDir::new().unwrap();
+        let _env = EnvGuard::set("PI_AGENT_HOME", tmp.path());
+
+        let seed = read_cc_fixture("cc_simple");
+        let written = PiAgent
+            .write_session(&seed, &WriteOptions { force: false })
+            .expect("seed CC→PiAgent");
+        PiAgent
+            .read_session(&written.paths[0])
+            .expect("read PiAgent")
+    };
+
+    let _lock = CODEX_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CODEX_HOME", tmp.path());
+
+    let written = Codex
+        .write_session(&piagent_session, &WriteOptions { force: false })
+        .expect("PiAgent→Codex write");
+    let readback = Codex
+        .read_session(&written.paths[0])
+        .expect("Codex read-back");
+
+    assert_roundtrip_fidelity(&piagent_session, &readback, "PiAgent→Codex");
+}
