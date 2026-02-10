@@ -31,7 +31,13 @@ use casr::providers::cline::Cline;
 use casr::providers::codex::Codex;
 use casr::providers::cursor::Cursor;
 use casr::providers::gemini::Gemini;
+use casr::providers::chatgpt::ChatGpt;
+use casr::providers::clawdbot::ClawdBot;
+use casr::providers::factory::Factory;
+use casr::providers::openclaw::OpenClaw;
 use casr::providers::opencode::OpenCode;
+use casr::providers::pi_agent::PiAgent;
+use casr::providers::vibe::Vibe;
 use casr::providers::{Provider, WriteOptions};
 
 // ---------------------------------------------------------------------------
@@ -46,6 +52,12 @@ static CLINE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static AIDER_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static AMP_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 static OPENCODE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CHATGPT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CLAWDBOT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static VIBE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static FACTORY_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static OPENCLAW_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static PIAGENT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 struct EnvGuard {
     key: &'static str,
@@ -760,4 +772,239 @@ fn roundtrip_gmi_missing_workspace_to_cc() {
         .expect("Gmi(no-ws)→CC: read-back should succeed");
 
     assert_roundtrip_fidelity(&original, &readback, "Gmi(no-ws)→CC");
+}
+
+// ===========================================================================
+// ChatGPT roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_chatgpt() {
+    let _lock = CHATGPT_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CHATGPT_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = ChatGpt
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→ChatGPT: write should succeed");
+
+    let readback = ChatGpt
+        .read_session(&written.paths[0])
+        .expect("CC→ChatGPT: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→ChatGPT");
+    assert_new_session_id(&readback, "CC→ChatGPT");
+}
+
+#[test]
+fn roundtrip_chatgpt_to_cc() {
+    let _lock_gpt = CHATGPT_ENV.lock().unwrap();
+    let _lock_cc = CC_ENV.lock().unwrap();
+    let tmp_gpt = tempfile::TempDir::new().unwrap();
+    let tmp_cc = tempfile::TempDir::new().unwrap();
+    let _env_gpt = EnvGuard::set("CHATGPT_HOME", tmp_gpt.path());
+    let _env_cc = EnvGuard::set("CLAUDE_HOME", tmp_cc.path());
+
+    // Seed: CC → ChatGPT.
+    let original = read_cc_fixture("cc_simple");
+    let written = ChatGpt
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("seed CC→ChatGPT write");
+
+    let gpt_session = ChatGpt.read_session(&written.paths[0]).expect("read ChatGPT");
+
+    // Target: ChatGPT → CC.
+    let cc_written = ClaudeCode
+        .write_session(&gpt_session, &WriteOptions { force: false })
+        .expect("ChatGPT→CC write");
+
+    let readback = ClaudeCode.read_session(&cc_written.paths[0]).expect("read CC back");
+
+    assert_roundtrip_fidelity(&original, &readback, "ChatGPT→CC");
+}
+
+// ===========================================================================
+// ClawdBot roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_clawdbot() {
+    let _lock = CLAWDBOT_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("CLAWDBOT_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = ClawdBot
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→ClawdBot: write should succeed");
+
+    let readback = ClawdBot
+        .read_session(&written.paths[0])
+        .expect("CC→ClawdBot: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→ClawdBot");
+}
+
+#[test]
+fn roundtrip_clawdbot_to_cc() {
+    let _lock_cwb = CLAWDBOT_ENV.lock().unwrap();
+    let _lock_cc = CC_ENV.lock().unwrap();
+    let tmp_cwb = tempfile::TempDir::new().unwrap();
+    let tmp_cc = tempfile::TempDir::new().unwrap();
+    let _env_cwb = EnvGuard::set("CLAWDBOT_HOME", tmp_cwb.path());
+    let _env_cc = EnvGuard::set("CLAUDE_HOME", tmp_cc.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = ClawdBot
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("seed CC→ClawdBot write");
+
+    let cwb_session = ClawdBot.read_session(&written.paths[0]).expect("read ClawdBot");
+
+    let cc_written = ClaudeCode
+        .write_session(&cwb_session, &WriteOptions { force: false })
+        .expect("ClawdBot→CC write");
+
+    let readback = ClaudeCode.read_session(&cc_written.paths[0]).expect("read CC back");
+
+    assert_roundtrip_fidelity(&original, &readback, "ClawdBot→CC");
+}
+
+// ===========================================================================
+// Vibe roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_vibe() {
+    let _lock = VIBE_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("VIBE_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = Vibe
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→Vibe: write should succeed");
+
+    let readback = Vibe
+        .read_session(&written.paths[0])
+        .expect("CC→Vibe: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→Vibe");
+}
+
+// ===========================================================================
+// Factory roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_factory() {
+    let _lock = FACTORY_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("FACTORY_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = Factory
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→Factory: write should succeed");
+
+    let readback = Factory
+        .read_session(&written.paths[0])
+        .expect("CC→Factory: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→Factory");
+}
+
+// ===========================================================================
+// OpenClaw roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_openclaw() {
+    let _lock = OPENCLAW_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("OPENCLAW_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = OpenClaw
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→OpenClaw: write should succeed");
+
+    let readback = OpenClaw
+        .read_session(&written.paths[0])
+        .expect("CC→OpenClaw: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→OpenClaw");
+}
+
+#[test]
+fn roundtrip_openclaw_to_cc() {
+    let _lock_ocl = OPENCLAW_ENV.lock().unwrap();
+    let _lock_cc = CC_ENV.lock().unwrap();
+    let tmp_ocl = tempfile::TempDir::new().unwrap();
+    let tmp_cc = tempfile::TempDir::new().unwrap();
+    let _env_ocl = EnvGuard::set("OPENCLAW_HOME", tmp_ocl.path());
+    let _env_cc = EnvGuard::set("CLAUDE_HOME", tmp_cc.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = OpenClaw
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("seed CC→OpenClaw write");
+
+    let ocl_session = OpenClaw.read_session(&written.paths[0]).expect("read OpenClaw");
+
+    let cc_written = ClaudeCode
+        .write_session(&ocl_session, &WriteOptions { force: false })
+        .expect("OpenClaw→CC write");
+
+    let readback = ClaudeCode.read_session(&cc_written.paths[0]).expect("read CC back");
+
+    assert_roundtrip_fidelity(&original, &readback, "OpenClaw→CC");
+}
+
+// ===========================================================================
+// Pi-Agent roundtrips
+// ===========================================================================
+
+#[test]
+fn roundtrip_cc_to_piagent() {
+    let _lock = PIAGENT_ENV.lock().unwrap();
+    let tmp = tempfile::TempDir::new().unwrap();
+    let _env = EnvGuard::set("PI_AGENT_HOME", tmp.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = PiAgent
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("CC→PiAgent: write should succeed");
+
+    let readback = PiAgent
+        .read_session(&written.paths[0])
+        .expect("CC→PiAgent: read-back should succeed");
+
+    assert_roundtrip_fidelity(&original, &readback, "CC→PiAgent");
+}
+
+#[test]
+fn roundtrip_piagent_to_cc() {
+    let _lock_pi = PIAGENT_ENV.lock().unwrap();
+    let _lock_cc = CC_ENV.lock().unwrap();
+    let tmp_pi = tempfile::TempDir::new().unwrap();
+    let tmp_cc = tempfile::TempDir::new().unwrap();
+    let _env_pi = EnvGuard::set("PI_AGENT_HOME", tmp_pi.path());
+    let _env_cc = EnvGuard::set("CLAUDE_HOME", tmp_cc.path());
+
+    let original = read_cc_fixture("cc_simple");
+    let written = PiAgent
+        .write_session(&original, &WriteOptions { force: false })
+        .expect("seed CC→PiAgent write");
+
+    let pi_session = PiAgent.read_session(&written.paths[0]).expect("read PiAgent");
+
+    let cc_written = ClaudeCode
+        .write_session(&pi_session, &WriteOptions { force: false })
+        .expect("PiAgent→CC write");
+
+    let readback = ClaudeCode.read_session(&cc_written.paths[0]).expect("read CC back");
+
+    assert_roundtrip_fidelity(&original, &readback, "PiAgent→CC");
 }
