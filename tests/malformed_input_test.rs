@@ -5,8 +5,6 @@
 //! wrong formats. Providers that support error recovery (CC, Codex) should
 //! produce partial sessions from mixed valid/invalid content.
 
-use std::path::Path;
-
 use casr::providers::Provider;
 use casr::providers::aider::Aider;
 use casr::providers::amp::Amp;
