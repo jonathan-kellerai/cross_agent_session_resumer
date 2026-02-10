@@ -105,6 +105,7 @@ impl ProviderRegistry {
             Box::new(crate::providers::aider::Aider),
             Box::new(crate::providers::amp::Amp),
             Box::new(crate::providers::opencode::OpenCode),
+            Box::new(crate::providers::chatgpt::ChatGpt),
         ])
     }
 
@@ -464,6 +465,13 @@ impl ProviderRegistry {
 
                 if value.get("sessionId").is_some() && value.get("messages").is_some() {
                     return self.find_by_slug("gemini");
+                }
+
+                // ChatGPT mapping-based conversation format.
+                if value.get("mapping").is_some()
+                    && (value.get("id").is_some() || value.get("conversation_id").is_some())
+                {
+                    return self.find_by_slug("chatgpt");
                 }
 
                 if value.get("session").is_some() {

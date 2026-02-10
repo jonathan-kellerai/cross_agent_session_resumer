@@ -32,6 +32,7 @@ fn casr_cmd(tmp: &TempDir) -> Command {
         .env("AIDER_HOME", tmp.path().join("aider"))
         .env("AMP_HOME", tmp.path().join("amp"))
         .env("OPENCODE_HOME", tmp.path().join("opencode"))
+        .env("CHATGPT_HOME", tmp.path().join("chatgpt"))
         .env("XDG_CONFIG_HOME", tmp.path().join("xdg-config"))
         .env("XDG_DATA_HOME", tmp.path().join("xdg-data"))
         .env("NO_COLOR", "1");
@@ -237,8 +238,8 @@ fn contract_providers_json_shape() {
         .expect("providers --json should be an array");
     assert_eq!(
         arr.len(),
-        8,
-        "should list 8 providers (CC, Codex, Gemini, Cursor, Cline, Aider, Amp, OpenCode)"
+        9,
+        "should list 9 providers (CC, Codex, Gemini, Cursor, Cline, Aider, Amp, OpenCode, ChatGPT)"
     );
 
     for (i, item) in arr.iter().enumerate() {
@@ -301,6 +302,7 @@ fn contract_providers_aliases_match_slugs() {
             "aider" => assert_eq!(*alias, "aid"),
             "amp" => assert_eq!(*alias, "amp"),
             "opencode" => assert_eq!(*alias, "opc"),
+            "chatgpt" => assert_eq!(*alias, "gpt"),
             other => panic!("Unexpected slug: {other}"),
         }
     }

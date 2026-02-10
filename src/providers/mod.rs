@@ -1,11 +1,12 @@
 //! Provider trait and concrete provider implementations.
 //!
 //! Each supported provider (Claude Code, Codex, Gemini CLI, Cursor, Cline,
-//! Aider, Amp, OpenCode) implements the [`Provider`] trait to read/write
-//! sessions in its native format.
+//! Aider, Amp, OpenCode, ChatGPT) implements the [`Provider`] trait to
+//! read/write sessions in its native format.
 
 pub mod aider;
 pub mod amp;
+pub mod chatgpt;
 pub mod claude_code;
 pub mod cline;
 pub mod codex;
