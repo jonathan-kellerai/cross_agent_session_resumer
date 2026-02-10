@@ -1019,18 +1019,6 @@ assert_file_count "enrich dry-run writes no files" "$CODEX_HOME/sessions" 0
 
 ALL_ALIASES=(cc cod gmi cur cln aid amp opc gpt cwb vib fac ocl pi)
 
-# Known failing pairs (pipeline bugs tracked separately).
-# Format: "source->target"
-MATRIX_KNOWN_FAILURES="gpt->gmi"
-
-is_known_failure() {
-    local pair="$1"
-    case " $MATRIX_KNOWN_FAILURES " in
-        *" $pair "*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 # Set up a source session and echo its session ID.
 # CC/Codex/Gemini use native fixtures; others are seeded from CC.
 setup_source_session() {
@@ -1071,11 +1059,6 @@ for source in "${ALL_ALIASES[@]}"; do
         [[ "$source" == "$target" ]] && continue
         MATRIX_PAIRS=$((MATRIX_PAIRS + 1))
         local_pair="${source}->${target}"
-
-        if is_known_failure "$local_pair"; then
-            skip "matrix:${local_pair} (known pipeline bug)"
-            continue
-        fi
 
         run_casr "matrix:${local_pair}" --json resume "$target" "$source_sid" --source "$source"
 

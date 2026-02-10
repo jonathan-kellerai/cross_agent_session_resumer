@@ -161,7 +161,14 @@ pub fn flatten_content(value: &serde_json::Value) -> String {
             parts.join("\n")
         }
         serde_json::Value::Object(obj) => {
-            // Single object without type but with text field.
+            // ChatGPT-style: {"content_type": "text", "parts": ["hello", ...]}.
+            if let Some(parts) = obj.get("parts").and_then(|v| v.as_array()) {
+                let texts: Vec<&str> = parts.iter().filter_map(|p| p.as_str()).collect();
+                if !texts.is_empty() {
+                    return texts.join("\n");
+                }
+            }
+            // Fallback: single object with "text" field.
             obj.get("text")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
