@@ -530,3 +530,195 @@ pub struct DetectionResult {
     pub version: Option<String>,
     pub evidence: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ProviderRegistry, SourceHint, is_plausible_session};
+    use crate::model::{CanonicalMessage, CanonicalSession, MessageRole};
+    use std::io::Write as _;
+    use std::path::PathBuf;
+
+    fn msg(idx: usize, role: MessageRole) -> CanonicalMessage {
+        CanonicalMessage {
+            idx,
+            role,
+            content: "x".to_string(),
+            timestamp: None,
+            author: None,
+            tool_calls: vec![],
+            tool_results: vec![],
+            extra: serde_json::Value::Null,
+        }
+    }
+
+    fn session_with_messages(messages: Vec<CanonicalMessage>) -> CanonicalSession {
+        CanonicalSession {
+            session_id: "sid".to_string(),
+            provider_slug: "test".to_string(),
+            workspace: None,
+            title: None,
+            started_at: None,
+            ended_at: None,
+            messages,
+            metadata: serde_json::Value::Null,
+            source_path: PathBuf::from("/tmp/source"),
+            model_name: None,
+        }
+    }
+
+    #[test]
+    fn source_hint_parse_alias_default() {
+        match SourceHint::parse("cc") {
+            SourceHint::Alias(a) => assert_eq!(a, "cc"),
+            other => panic!("expected Alias, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn source_hint_parse_path_dot_slash() {
+        match SourceHint::parse("./some/path.jsonl") {
+            SourceHint::Path(p) => assert_eq!(p, PathBuf::from("./some/path.jsonl")),
+            other => panic!("expected Path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn source_hint_parse_path_tilde_expands_home_when_available() {
+        let hint = SourceHint::parse("~/x.jsonl");
+        match hint {
+            SourceHint::Path(p) => {
+                let expected = dirs::home_dir()
+                    .map(|h| h.join("x.jsonl"))
+                    .unwrap_or_else(|| PathBuf::from("~/x.jsonl"));
+                assert_eq!(p, expected);
+            }
+            other => panic!("expected Path, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plausible_session_requires_user_and_assistant() {
+        assert!(!is_plausible_session(&session_with_messages(vec![])));
+        assert!(!is_plausible_session(&session_with_messages(vec![msg(
+            0,
+            MessageRole::User,
+        )])));
+        assert!(!is_plausible_session(&session_with_messages(vec![msg(
+            0,
+            MessageRole::Assistant,
+        )])));
+        assert!(is_plausible_session(&session_with_messages(vec![
+            msg(0, MessageRole::User),
+            msg(1, MessageRole::Assistant),
+        ])));
+    }
+
+    fn infer_slug_for_file(path: &std::path::Path) -> Option<String> {
+        let registry = ProviderRegistry::default_registry();
+        registry
+            .infer_provider_for_path(path)
+            .map(|p| p.slug().to_string())
+    }
+
+    #[test]
+    fn infer_provider_for_path_vscdb_is_cursor() {
+        let tmp = tempfile::NamedTempFile::with_suffix(".vscdb").expect("tmp");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("cursor"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_json_gemini() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".json").expect("tmp");
+        tmp.write_all(br#"{"sessionId":"s1","messages":[]}"#)
+            .expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("gemini"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_json_chatgpt_mapping() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".json").expect("tmp");
+        tmp.write_all(br#"{"id":"c1","mapping":{}}"#)
+            .expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("chatgpt"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_json_codex_session_key() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".json").expect("tmp");
+        tmp.write_all(br#"{"session":{}}"#).expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("codex"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_jsonl_codex_session_meta() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".jsonl").expect("tmp");
+        tmp.write_all(b"\n{\"type\":\"session_meta\"}\n")
+            .expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("codex"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_jsonl_claude_code() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".jsonl").expect("tmp");
+        tmp.write_all(
+            br#"{"sessionId":"s1","uuid":"u1","cwd":"/tmp","type":"user","message":{"role":"user","content":"hi"}}"#,
+        )
+        .expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(
+            infer_slug_for_file(tmp.path()).as_deref(),
+            Some("claude-code")
+        );
+    }
+
+    #[test]
+    fn infer_provider_for_path_jsonl_clawdbot_bare_role_content() {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".jsonl").expect("tmp");
+        tmp.write_all(br#"{"role":"user","content":"hi"}"#)
+            .expect("write");
+        tmp.flush().expect("flush");
+        assert_eq!(infer_slug_for_file(tmp.path()).as_deref(), Some("clawdbot"));
+    }
+
+    #[test]
+    fn infer_provider_for_path_jsonl_message_disambiguates_by_filename_stem() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let content = br#"{"type":"message","message":{"role":"user","content":"hi"}}"#;
+
+        let openclaw_path = dir.path().join("openclaw.jsonl");
+        std::fs::write(&openclaw_path, content).expect("write openclaw");
+        assert_eq!(
+            infer_slug_for_file(&openclaw_path).as_deref(),
+            Some("openclaw")
+        );
+
+        let pi_agent_path = dir.path().join("pi_agent.jsonl");
+        std::fs::write(&pi_agent_path, content).expect("write pi_agent");
+        assert_eq!(
+            infer_slug_for_file(&pi_agent_path).as_deref(),
+            Some("pi-agent")
+        );
+    }
+
+    #[test]
+    fn infer_provider_for_path_unknown_extension_returns_none() {
+        let tmp = tempfile::NamedTempFile::with_suffix(".wat").expect("tmp");
+        assert_eq!(infer_slug_for_file(tmp.path()), None);
+    }
+
+    #[test]
+    fn known_aliases_includes_provider_names() {
+        let registry = ProviderRegistry::default_registry();
+        let aliases = registry.known_aliases();
+        assert!(
+            aliases
+                .iter()
+                .any(|a| a.contains("cc") && a.contains("Claude Code")),
+            "expected cc alias in known_aliases: {aliases:?}"
+        );
+    }
+}

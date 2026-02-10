@@ -12,6 +12,7 @@ use colored::Colorize;
 use tracing_subscriber::EnvFilter;
 
 use casr::discovery::ProviderRegistry;
+use casr::model::truncate_title;
 use casr::pipeline::{ConversionPipeline, ConvertOptions};
 
 /// Cross Agent Session Resumer — resume AI coding sessions across providers.
@@ -456,11 +457,7 @@ fn cmd_list(
             let prov = &s.provider;
             let title = s.title.as_deref().unwrap_or("");
             let msgs = s.messages;
-            let display_title = if title.len() > 60 {
-                format!("{}...", &title[..57])
-            } else {
-                title.to_string()
-            };
+            let display_title = truncate_title(title, 60);
 
             println!(
                 "  {} {} {} {}",

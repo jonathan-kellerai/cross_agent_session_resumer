@@ -378,7 +378,7 @@ but resume may fail until the CLI is installed.",
             ));
         }
 
-        // 5. Dry-run short-circuit.
+        // 6. Dry-run short-circuit.
         if opts.dry_run {
             info!("dry run — skipping write and verify");
             return Ok(ConversionResult {
@@ -390,7 +390,7 @@ but resume may fail until the CLI is installed.",
             });
         }
 
-        // 6. Same-provider short-circuit.
+        // 7. Same-provider short-circuit.
         if !opts.enrich && resolved.provider.slug() == target_provider.slug() {
             info!("source and target provider are the same — skipping write and verify");
             all_warnings.push(
@@ -410,7 +410,7 @@ but resume may fail until the CLI is installed.",
             });
         }
 
-        // 6. Write to target provider.
+        // 8. Write to target provider.
         let write_opts = WriteOptions { force: opts.force };
         let written = target_provider.write_session(&canonical, &write_opts)?;
         info!(
@@ -419,7 +419,7 @@ but resume may fail until the CLI is installed.",
             "session written"
         );
 
-        // 7. Read-back verification.
+        // 9. Read-back verification.
         if let Some(first_path) = written.paths.first() {
             match target_provider.read_session(first_path) {
                 Ok(readback) => {

@@ -20,8 +20,9 @@
 //! | token_usage     | LOST when leaving Codex                            |
 //! | citations       | LOST when leaving Gemini                           |
 
+mod test_env;
+
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
 
 use casr::model::{CanonicalSession, MessageRole};
 use casr::providers::aider::Aider;
@@ -41,23 +42,23 @@ use casr::providers::vibe::Vibe;
 use casr::providers::{Provider, WriteOptions};
 
 // ---------------------------------------------------------------------------
-// Env var isolation (same pattern as writer_test.rs)
+// Env var isolation (see `tests/test_env.rs`)
 // ---------------------------------------------------------------------------
 
-static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static GEMINI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CURSOR_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CLINE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static AIDER_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static AMP_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static OPENCODE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CHATGPT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CLAWDBOT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static VIBE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static FACTORY_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static OPENCLAW_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static PIAGENT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CC_ENV: test_env::EnvLock = test_env::EnvLock;
+static CODEX_ENV: test_env::EnvLock = test_env::EnvLock;
+static GEMINI_ENV: test_env::EnvLock = test_env::EnvLock;
+static CURSOR_ENV: test_env::EnvLock = test_env::EnvLock;
+static CLINE_ENV: test_env::EnvLock = test_env::EnvLock;
+static AIDER_ENV: test_env::EnvLock = test_env::EnvLock;
+static AMP_ENV: test_env::EnvLock = test_env::EnvLock;
+static OPENCODE_ENV: test_env::EnvLock = test_env::EnvLock;
+static CHATGPT_ENV: test_env::EnvLock = test_env::EnvLock;
+static CLAWDBOT_ENV: test_env::EnvLock = test_env::EnvLock;
+static VIBE_ENV: test_env::EnvLock = test_env::EnvLock;
+static FACTORY_ENV: test_env::EnvLock = test_env::EnvLock;
+static OPENCLAW_ENV: test_env::EnvLock = test_env::EnvLock;
+static PIAGENT_ENV: test_env::EnvLock = test_env::EnvLock;
 
 struct EnvGuard {
     key: &'static str,
@@ -67,7 +68,8 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &'static str, value: &Path) -> Self {
         let original = std::env::var(key).ok();
-        // SAFETY: Protected by per-provider Mutex.
+        // SAFETY: Tests must hold an `_ENV` lock (see `test_env`) while mutating
+        // the process environment and while invoking code that reads it.
         unsafe { std::env::set_var(key, value) };
         Self { key, original }
     }
@@ -1839,10 +1841,10 @@ fn roundtrip_gemini_to_piagent() {
 fn cross_provider_roundtrip(
     source: &dyn Provider,
     source_env_key: &'static str,
-    source_lock: &Mutex<()>,
+    source_lock: &'static test_env::EnvLock,
     target: &dyn Provider,
     target_env_key: &'static str,
-    target_lock: &Mutex<()>,
+    target_lock: &'static test_env::EnvLock,
     label: &str,
 ) {
     // Step 1: Create source session (seed from CC fixture → write to source → read back).

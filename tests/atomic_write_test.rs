@@ -5,12 +5,15 @@
 //! writes, write-then-read roundtrips for multiple providers, and edge cases.
 //! Complements the lower-level unit tests in `pipeline.rs`.
 
+mod test_env;
+
 #[cfg(unix)]
 mod atomic_write_integration {
+    use super::test_env;
+
     use std::fs;
     use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
-    use std::sync::{LazyLock, Mutex};
 
     use casr::model::{CanonicalMessage, CanonicalSession, MessageRole};
     use casr::providers::Provider;
@@ -24,14 +27,14 @@ mod atomic_write_integration {
     use casr::providers::pi_agent::PiAgent;
     use casr::providers::vibe::Vibe;
 
-    static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static GEMINI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static CLAWDBOT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static VIBE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static FACTORY_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static OPENCLAW_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-    static PI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+    static CC_ENV: test_env::EnvLock = test_env::EnvLock;
+    static CODEX_ENV: test_env::EnvLock = test_env::EnvLock;
+    static GEMINI_ENV: test_env::EnvLock = test_env::EnvLock;
+    static CLAWDBOT_ENV: test_env::EnvLock = test_env::EnvLock;
+    static VIBE_ENV: test_env::EnvLock = test_env::EnvLock;
+    static FACTORY_ENV: test_env::EnvLock = test_env::EnvLock;
+    static OPENCLAW_ENV: test_env::EnvLock = test_env::EnvLock;
+    static PI_ENV: test_env::EnvLock = test_env::EnvLock;
 
     struct EnvGuard {
         key: &'static str,
@@ -41,6 +44,8 @@ mod atomic_write_integration {
     impl EnvGuard {
         fn set(key: &'static str, value: &std::path::Path) -> Self {
             let original = std::env::var(key).ok();
+            // SAFETY: Tests must hold an `_ENV` lock (see `test_env`) while mutating
+            // the process environment and while invoking code that reads it.
             unsafe { std::env::set_var(key, value) };
             Self { key, original }
         }

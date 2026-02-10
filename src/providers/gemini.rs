@@ -53,7 +53,7 @@ pub fn project_hash(workspace: &Path) -> String {
 /// where `<uuid-prefix>` is the first 8 chars of the session UUID.
 pub fn session_filename(session_id: &str, now: &chrono::DateTime<chrono::Utc>) -> String {
     let ts = now.format("%Y-%m-%dT%H-%M").to_string();
-    let prefix = &session_id[..session_id.len().min(8)];
+    let prefix: String = session_id.chars().take(8).collect();
     format!("session-{ts}-{prefix}.json")
 }
 

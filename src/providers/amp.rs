@@ -387,6 +387,65 @@ impl Amp {
         }
         serde_json::Value::Object(obj)
     }
+
+    fn build_thread_json(
+        session: &CanonicalSession,
+        thread_id: &str,
+        created: i64,
+    ) -> serde_json::Value {
+        let title = session
+            .title
+            .as_ref()
+            .map(|t| truncate_title(t, 100))
+            .filter(|t| !t.trim().is_empty())
+            .or_else(|| {
+                session
+                    .messages
+                    .iter()
+                    .find(|m| m.role == MessageRole::User && !m.content.trim().is_empty())
+                    .map(|m| truncate_title(&m.content, 100))
+                    .filter(|t| !t.trim().is_empty())
+            });
+
+        let mut thread_obj = serde_json::Map::new();
+        thread_obj.insert("v".to_string(), serde_json::Value::Number(0.into()));
+        thread_obj.insert(
+            "id".to_string(),
+            serde_json::Value::String(thread_id.to_string()),
+        );
+        thread_obj.insert(
+            "created".to_string(),
+            serde_json::Value::Number(created.into()),
+        );
+        if let Some(t) = title {
+            thread_obj.insert("title".to_string(), serde_json::Value::String(t));
+        }
+        if let Some(ws) = session.workspace.as_ref() {
+            let ws_str = ws.display().to_string();
+            let file_uri = format!("file://{}", ws_str);
+            thread_obj.insert(
+                "env".to_string(),
+                serde_json::json!({
+                    "initial": {
+                        "cwd": ws_str,
+                        "trees": [{"uri": file_uri, "displayName": ws.file_name().and_then(|s| s.to_str()).unwrap_or("")}],
+                    }
+                }),
+            );
+        }
+
+        let amp_messages: Vec<serde_json::Value> = session
+            .messages
+            .iter()
+            .map(Self::build_amp_message)
+            .collect();
+        thread_obj.insert(
+            "messages".to_string(),
+            serde_json::Value::Array(amp_messages),
+        );
+
+        serde_json::Value::Object(thread_obj)
+    }
 }
 
 impl Provider for Amp {
@@ -522,6 +581,10 @@ impl Provider for Amp {
             let tool_results = Self::extract_tool_results(&content_val);
             let timestamp = Self::extract_message_timestamp(msg);
 
+            if content.trim().is_empty() && tool_calls.is_empty() && tool_results.is_empty() {
+                continue;
+            }
+
             messages.push(CanonicalMessage {
                 idx,
                 role,
@@ -585,56 +648,7 @@ impl Provider for Amp {
             .started_at
             .unwrap_or_else(|| chrono::Utc::now().timestamp_millis());
 
-        let title = session
-            .title
-            .as_ref()
-            .map(|t| truncate_title(t, 100))
-            .or_else(|| {
-                session
-                    .messages
-                    .iter()
-                    .find(|m| m.role == MessageRole::User && !m.content.trim().is_empty())
-                    .map(|m| truncate_title(&m.content, 100))
-            });
-
-        let mut thread_obj = serde_json::Map::new();
-        thread_obj.insert("v".to_string(), serde_json::Value::Number(0.into()));
-        thread_obj.insert(
-            "id".to_string(),
-            serde_json::Value::String(thread_id.clone()),
-        );
-        thread_obj.insert(
-            "created".to_string(),
-            serde_json::Value::Number(created.into()),
-        );
-        if let Some(t) = title {
-            thread_obj.insert("title".to_string(), serde_json::Value::String(t));
-        }
-        if let Some(ws) = session.workspace.as_ref() {
-            let ws_str = ws.display().to_string();
-            let file_uri = format!("file://{}", ws_str);
-            thread_obj.insert(
-                "env".to_string(),
-                serde_json::json!({
-                    "initial": {
-                        "cwd": ws_str,
-                        "trees": [{"uri": file_uri, "displayName": ws.file_name().and_then(|s| s.to_str()).unwrap_or("")}],
-                    }
-                }),
-            );
-        }
-
-        let amp_messages: Vec<serde_json::Value> = session
-            .messages
-            .iter()
-            .map(Self::build_amp_message)
-            .collect();
-        thread_obj.insert(
-            "messages".to_string(),
-            serde_json::Value::Array(amp_messages),
-        );
-
-        let thread_json = serde_json::Value::Object(thread_obj);
+        let thread_json = Self::build_thread_json(session, &thread_id, created);
         let bytes = serde_json::to_vec_pretty(&thread_json)?;
 
         let target_path = threads_root.join(format!("{thread_id}.json"));
@@ -652,5 +666,352 @@ impl Provider for Amp {
         // Amp doesn't have a stable "resume exact local thread file" CLI contract.
         // The most portable action is to reference the thread by ID in a new prompt.
         format!("amp threads continue --execute \"Continue from @{session_id}\"")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Amp;
+    use crate::model::{CanonicalMessage, CanonicalSession, MessageRole, ToolCall, ToolResult};
+    use crate::providers::Provider;
+    use std::io::Write;
+    use std::path::PathBuf;
+
+    fn read_thread(json: serde_json::Value) -> CanonicalSession {
+        let mut tmp = tempfile::NamedTempFile::with_suffix(".json").expect("tmp thread file");
+        let bytes = serde_json::to_vec_pretty(&json).expect("serialize thread json");
+        tmp.write_all(&bytes).expect("write thread json");
+        tmp.flush().expect("flush thread json");
+        Amp.read_session(tmp.path())
+            .expect("read_session should succeed")
+    }
+
+    fn base_thread(id: &str, created: i64) -> serde_json::Value {
+        serde_json::json!({
+            "v": 0,
+            "id": id,
+            "created": created,
+            "messages": []
+        })
+    }
+
+    fn user_msg(text: &str, sent_at: i64) -> serde_json::Value {
+        serde_json::json!({
+            "role": "user",
+            "content": [{"type": "text", "text": text}],
+            "meta": {"sentAt": sent_at}
+        })
+    }
+
+    fn assistant_msg(blocks: Vec<serde_json::Value>, sent_at: i64) -> serde_json::Value {
+        serde_json::json!({
+            "role": "assistant",
+            "content": blocks,
+            "meta": {"sentAt": sent_at}
+        })
+    }
+
+    #[test]
+    fn reader_basic_thread_extracts_core_fields() {
+        let id = "T-550e8400-e29b-41d4-a716-446655440000";
+        let created = 1_700_000_000_000_i64;
+        let mut thread = base_thread(id, created);
+        thread["title"] = serde_json::Value::String("My Amp Thread".to_string());
+        thread["env"] = serde_json::json!({
+            "initial": {"cwd": "/data/projects/ws", "trees": [{"uri": "file:///data/projects/ws", "displayName": "ws"}]}
+        });
+        thread["messages"] = serde_json::Value::Array(vec![
+            user_msg("Hello", created),
+            assistant_msg(
+                vec![
+                    serde_json::json!({"type":"text","text":"Hi"}),
+                    serde_json::json!({"type":"tool_use","id":"tool-1","name":"Read","input":{"path":"src/lib.rs"}}),
+                ],
+                created + 1,
+            ),
+            assistant_msg(
+                vec![
+                    serde_json::json!({"type":"tool_result","toolUseID":"tool-1","run":{"status":"done","progress":"ok"}}),
+                ],
+                created + 2,
+            ),
+        ]);
+
+        let session = read_thread(thread);
+        assert_eq!(session.provider_slug, "amp");
+        assert_eq!(session.session_id, id);
+        assert_eq!(session.title.as_deref(), Some("My Amp Thread"));
+        assert_eq!(session.workspace, Some(PathBuf::from("/data/projects/ws")));
+        assert_eq!(session.started_at, Some(created));
+        assert_eq!(session.ended_at, Some(created + 2));
+
+        assert_eq!(session.messages.len(), 3);
+        assert_eq!(session.messages[0].role, MessageRole::User);
+        assert_eq!(session.messages[0].content, "Hello");
+        assert_eq!(session.messages[0].timestamp, Some(created));
+
+        assert_eq!(session.messages[1].role, MessageRole::Assistant);
+        assert_eq!(session.messages[1].content, "Hi\n[Tool: Read]");
+        assert_eq!(session.messages[1].tool_calls.len(), 1);
+        assert_eq!(
+            session.messages[1].tool_calls[0].id.as_deref(),
+            Some("tool-1")
+        );
+        assert_eq!(session.messages[1].tool_calls[0].name, "Read");
+        assert_eq!(
+            session.messages[1].tool_calls[0].arguments["path"].as_str(),
+            Some("src/lib.rs")
+        );
+
+        assert_eq!(session.messages[2].role, MessageRole::Assistant);
+        assert!(session.messages[2].content.trim().is_empty());
+        assert_eq!(session.messages[2].tool_results.len(), 1);
+        assert_eq!(
+            session.messages[2].tool_results[0].call_id.as_deref(),
+            Some("tool-1")
+        );
+        assert_eq!(session.messages[2].tool_results[0].content, "ok");
+        assert!(!session.messages[2].tool_results[0].is_error);
+    }
+
+    #[test]
+    fn reader_extracts_info_summary_when_text_is_empty() {
+        let id = "T-550e8400-e29b-41d4-a716-446655440001";
+        let created = 1_700_000_000_000_i64;
+        let mut thread = base_thread(id, created);
+        thread["messages"] = serde_json::Value::Array(vec![
+            user_msg("Hello", created),
+            assistant_msg(
+                vec![serde_json::json!({"type":"text","text":"Hi"})],
+                created + 1,
+            ),
+            serde_json::json!({
+                "role": "info",
+                "content": [{"type":"summary","summary":{"type":"message","summary":"Short summary"}}],
+                "meta": {"sentAt": created + 2}
+            }),
+        ]);
+
+        let session = read_thread(thread);
+        assert_eq!(session.messages.len(), 3);
+        assert_eq!(
+            session.messages[2].role,
+            MessageRole::Other("info".to_string())
+        );
+        assert_eq!(session.messages[2].content, "Short summary");
+    }
+
+    #[test]
+    fn reader_extracts_workspace_from_tree_uri_when_cwd_missing() {
+        let id = "T-550e8400-e29b-41d4-a716-446655440002";
+        let created = 1_700_000_000_000_i64;
+        let mut thread = base_thread(id, created);
+        thread["env"] = serde_json::json!({
+            "initial": {"trees": [{"uri": "file:///data/projects/tree_ws", "displayName": "tree_ws"}]}
+        });
+        thread["messages"] = serde_json::Value::Array(vec![user_msg("Hello", created)]);
+
+        let session = read_thread(thread);
+        assert_eq!(
+            session.workspace,
+            Some(PathBuf::from("/data/projects/tree_ws"))
+        );
+    }
+
+    #[test]
+    fn reader_title_falls_back_to_first_user_message_when_missing() {
+        let id = "T-550e8400-e29b-41d4-a716-446655440003";
+        let created = 1_700_000_000_000_i64;
+        let mut thread = base_thread(id, created);
+        thread["messages"] = serde_json::Value::Array(vec![
+            user_msg("Fix the bug in auth.rs", created),
+            assistant_msg(
+                vec![serde_json::json!({"type":"text","text":"OK"})],
+                created + 1,
+            ),
+        ]);
+
+        let session = read_thread(thread);
+        assert_eq!(session.title.as_deref(), Some("Fix the bug in auth.rs"));
+    }
+
+    #[test]
+    fn reader_skips_messages_with_empty_content_and_no_tool_blocks() {
+        let id = "T-550e8400-e29b-41d4-a716-446655440004";
+        let created = 1_700_000_000_000_i64;
+        let mut thread = base_thread(id, created);
+        thread["messages"] = serde_json::Value::Array(vec![
+            user_msg("Before", created),
+            assistant_msg(
+                vec![serde_json::json!({"type":"unknown","data":{}})],
+                created + 1,
+            ),
+            assistant_msg(
+                vec![serde_json::json!({"type":"text","text":"After"})],
+                created + 2,
+            ),
+        ]);
+
+        let session = read_thread(thread);
+        assert_eq!(session.messages.len(), 2);
+        assert_eq!(session.messages[0].idx, 0);
+        assert_eq!(session.messages[0].content, "Before");
+        assert_eq!(session.messages[1].idx, 1);
+        assert_eq!(session.messages[1].content, "After");
+    }
+
+    #[test]
+    fn reader_session_id_falls_back_to_filename_stem_when_missing() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let path = tmp.path().join("thread-stem.json");
+        let json = serde_json::json!({
+            "v": 0,
+            "created": 1_700_000_000_000_i64,
+            "messages": [user_msg("Hello", 1_700_000_000_000_i64), assistant_msg(vec![serde_json::json!({"type":"text","text":"Hi"})], 1_700_000_000_001_i64)]
+        });
+        let bytes = serde_json::to_vec_pretty(&json).expect("serialize json");
+        std::fs::write(&path, &bytes).expect("write json");
+
+        let session = Amp.read_session(&path).expect("read_session");
+        assert_eq!(session.session_id, "thread-stem");
+    }
+
+    #[test]
+    fn writer_generate_thread_id_matches_expected_format() {
+        let tid = Amp::generate_thread_id();
+        assert!(
+            Amp::looks_like_thread_id(&tid),
+            "generated thread id should be parseable: {tid}"
+        );
+    }
+
+    #[test]
+    fn writer_role_mapping_matches_expectations() {
+        assert_eq!(Amp::amp_role_for_canonical(&MessageRole::User), "user");
+        assert_eq!(
+            Amp::amp_role_for_canonical(&MessageRole::Assistant),
+            "assistant"
+        );
+        assert_eq!(Amp::amp_role_for_canonical(&MessageRole::System), "info");
+        assert_eq!(Amp::amp_role_for_canonical(&MessageRole::Tool), "info");
+        assert_eq!(
+            Amp::amp_role_for_canonical(&MessageRole::Other("reviewer".to_string())),
+            "info"
+        );
+    }
+
+    #[test]
+    fn writer_build_amp_message_preserves_tool_blocks() {
+        let msg = CanonicalMessage {
+            idx: 0,
+            role: MessageRole::Assistant,
+            content: "Hello".to_string(),
+            timestamp: Some(1_700_000_000_000_i64),
+            author: None,
+            tool_calls: vec![ToolCall {
+                id: Some("tool-1".to_string()),
+                name: "Read".to_string(),
+                arguments: serde_json::json!({"path":"src/main.rs"}),
+            }],
+            tool_results: vec![ToolResult {
+                call_id: Some("tool-1".to_string()),
+                content: "ok".to_string(),
+                is_error: false,
+            }],
+            extra: serde_json::Value::Null,
+        };
+
+        let amp_msg = Amp::build_amp_message(&msg);
+        assert_eq!(amp_msg["role"].as_str(), Some("assistant"));
+        let blocks = amp_msg["content"].as_array().expect("blocks array");
+        assert!(
+            blocks
+                .iter()
+                .any(|b| b.get("type") == Some(&serde_json::Value::String("tool_use".to_string()))),
+            "expected tool_use block"
+        );
+        assert!(
+            blocks
+                .iter()
+                .any(|b| b.get("type")
+                    == Some(&serde_json::Value::String("tool_result".to_string()))),
+            "expected tool_result block"
+        );
+    }
+
+    #[test]
+    fn writer_build_thread_json_roundtrips_through_reader() {
+        let thread_id = "T-550e8400-e29b-41d4-a716-446655440005";
+        let created = 1_700_000_000_000_i64;
+        let session = CanonicalSession {
+            session_id: "source".to_string(),
+            provider_slug: "test".to_string(),
+            workspace: Some(PathBuf::from("/data/projects/ws_roundtrip")),
+            title: Some("Roundtrip title".to_string()),
+            started_at: Some(created),
+            ended_at: Some(created + 1),
+            messages: vec![
+                CanonicalMessage {
+                    idx: 0,
+                    role: MessageRole::User,
+                    content: "Hello".to_string(),
+                    timestamp: Some(created),
+                    author: None,
+                    tool_calls: vec![],
+                    tool_results: vec![],
+                    extra: serde_json::Value::Null,
+                },
+                CanonicalMessage {
+                    idx: 1,
+                    role: MessageRole::Assistant,
+                    content: "Hi".to_string(),
+                    timestamp: Some(created + 1),
+                    author: None,
+                    tool_calls: vec![ToolCall {
+                        id: Some("tool-1".to_string()),
+                        name: "Read".to_string(),
+                        arguments: serde_json::json!({"path":"src/lib.rs"}),
+                    }],
+                    tool_results: vec![ToolResult {
+                        call_id: Some("tool-1".to_string()),
+                        content: "ok".to_string(),
+                        is_error: false,
+                    }],
+                    extra: serde_json::Value::Null,
+                },
+            ],
+            metadata: serde_json::Value::Null,
+            source_path: PathBuf::from("/tmp/source.jsonl"),
+            model_name: None,
+        };
+
+        let thread_json = Amp::build_thread_json(&session, thread_id, created);
+        let readback = read_thread(thread_json);
+        assert_eq!(readback.session_id, thread_id);
+        assert_eq!(readback.title.as_deref(), Some("Roundtrip title"));
+        assert_eq!(
+            readback.workspace,
+            Some(PathBuf::from("/data/projects/ws_roundtrip"))
+        );
+        assert_eq!(readback.messages.len(), session.messages.len());
+        fn strip_tool_lines(s: &str) -> String {
+            s.lines()
+                .filter(|line| !line.trim_start().starts_with("[Tool:"))
+                .collect::<Vec<&str>>()
+                .join("\n")
+        }
+
+        for (orig, rb) in session.messages.iter().zip(readback.messages.iter()) {
+            assert_eq!(orig.role, rb.role);
+            assert_eq!(orig.content, strip_tool_lines(&rb.content));
+        }
+        assert_eq!(readback.messages[1].tool_calls.len(), 1);
+        assert_eq!(readback.messages[1].tool_results.len(), 1);
+    }
+
+    #[test]
+    fn resume_command_contains_thread_id() {
+        let cmd = <Amp as Provider>::resume_command(&Amp, "T-123");
+        assert!(cmd.contains("@T-123"));
     }
 }

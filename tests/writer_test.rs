@@ -3,14 +3,14 @@
 //! Tests `write_session()` → `read_session()` round-trip compatibility and
 //! provider-specific output shape conformance.
 //!
-//! Each provider's tests are serialized via a per-provider Mutex because
-//! `write_session()` reads environment variables (`CLAUDE_HOME`, `CODEX_HOME`,
-//! `GEMINI_HOME`, `CLINE_HOME`, `AMP_HOME`) to determine the target directory.
-//! Using separate mutexes allows cross-provider parallelism while preventing
-//! intra-provider races.
+//! These tests serialize process environment access because `write_session()`
+//! reads provider home environment variables (`CLAUDE_HOME`, `CODEX_HOME`,
+//! `GEMINI_HOME`, `CLINE_HOME`, `AMP_HOME`, etc.) to determine the target
+//! directory and Rust 2024 makes env mutation `unsafe` under concurrency.
+
+mod test_env;
 
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex};
 
 use casr::model::{CanonicalMessage, CanonicalSession, MessageRole, ToolCall};
 use casr::providers::amp::Amp;
@@ -27,20 +27,28 @@ use casr::providers::vibe::Vibe;
 use casr::providers::{Provider, WriteOptions};
 
 // ---------------------------------------------------------------------------
-// Env var isolation — one Mutex per provider for cross-provider parallelism
+// Env var isolation
+//
+// Rust 2024 makes `std::env::set_var`/`remove_var` `unsafe` due to unsoundness
+// when the process environment is accessed concurrently. The test harness runs
+// tests in parallel, so all provider env mutations (and code that reads env)
+// must be serialized within this test binary.
+//
+// Provider-named statics are kept for readability; they all share the same
+// global re-entrant lock via `test_env`.
 // ---------------------------------------------------------------------------
 
-static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static GEMINI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CLINE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static AMP_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CHATGPT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CLAWDBOT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static VIBE_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static FACTORY_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static OPENCLAW_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static PI_AGENT_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CC_ENV: test_env::EnvLock = test_env::EnvLock;
+static CODEX_ENV: test_env::EnvLock = test_env::EnvLock;
+static GEMINI_ENV: test_env::EnvLock = test_env::EnvLock;
+static CLINE_ENV: test_env::EnvLock = test_env::EnvLock;
+static AMP_ENV: test_env::EnvLock = test_env::EnvLock;
+static CHATGPT_ENV: test_env::EnvLock = test_env::EnvLock;
+static CLAWDBOT_ENV: test_env::EnvLock = test_env::EnvLock;
+static VIBE_ENV: test_env::EnvLock = test_env::EnvLock;
+static FACTORY_ENV: test_env::EnvLock = test_env::EnvLock;
+static OPENCLAW_ENV: test_env::EnvLock = test_env::EnvLock;
+static PI_AGENT_ENV: test_env::EnvLock = test_env::EnvLock;
 
 /// RAII guard that sets an env var and restores the original value on drop.
 struct EnvGuard {
@@ -51,9 +59,8 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &'static str, value: &std::path::Path) -> Self {
         let original = std::env::var(key).ok();
-        // SAFETY: Protected by per-provider Mutex; no concurrent modification
-        // of the same env var. Reader unit tests don't depend on these env vars
-        // (they pass paths directly to read_session).
+        // SAFETY: Tests must hold an `_ENV` lock (see `test_env`) while mutating
+        // the process environment and while invoking code that reads it.
         unsafe { std::env::set_var(key, value) };
         Self { key, original }
     }

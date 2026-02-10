@@ -6,7 +6,7 @@
 //! Each should return `SessionNotFound` with a safe error message (no path
 //! injection, no panic).
 
-use std::sync::{LazyLock, Mutex};
+mod test_env;
 
 use casr::discovery::ProviderRegistry;
 use casr::error::CasrError;
@@ -14,8 +14,8 @@ use casr::providers::Provider;
 use casr::providers::claude_code::ClaudeCode;
 use casr::providers::codex::Codex;
 
-static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CC_ENV: test_env::EnvLock = test_env::EnvLock;
+static CODEX_ENV: test_env::EnvLock = test_env::EnvLock;
 
 struct EnvGuard {
     key: &'static str,
@@ -25,6 +25,8 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &'static str, value: &std::path::Path) -> Self {
         let original = std::env::var(key).ok();
+        // SAFETY: Tests must hold an `_ENV` lock (see `test_env`) while mutating
+        // the process environment and while invoking code that reads it.
         unsafe { std::env::set_var(key, value) };
         Self { key, original }
     }

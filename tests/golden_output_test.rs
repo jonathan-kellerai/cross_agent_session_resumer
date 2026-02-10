@@ -15,8 +15,9 @@
 //!
 //! Bead: bd-24z.14
 
+mod test_env;
+
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex};
 
 use tempfile::TempDir;
 
@@ -24,12 +25,12 @@ use casr::model::{CanonicalMessage, CanonicalSession, MessageRole, ToolCall, Too
 use casr::providers::{Provider, WriteOptions};
 
 // ---------------------------------------------------------------------------
-// Environment isolation (same pattern as writer_test.rs / roundtrip_test.rs)
+// Environment isolation (see `tests/test_env.rs`)
 // ---------------------------------------------------------------------------
 
-static CC_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static CODEX_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-static GEMINI_ENV: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+static CC_ENV: test_env::EnvLock = test_env::EnvLock;
+static CODEX_ENV: test_env::EnvLock = test_env::EnvLock;
+static GEMINI_ENV: test_env::EnvLock = test_env::EnvLock;
 
 struct EnvGuard {
     key: &'static str,
@@ -39,6 +40,8 @@ struct EnvGuard {
 impl EnvGuard {
     fn set(key: &'static str, value: &std::path::Path) -> Self {
         let original = std::env::var(key).ok();
+        // SAFETY: Tests must hold an `_ENV` lock (see `test_env`) while mutating
+        // the process environment and while invoking code that reads it.
         unsafe { std::env::set_var(key, value) };
         Self { key, original }
     }
