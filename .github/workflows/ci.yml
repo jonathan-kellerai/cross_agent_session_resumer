@@ -38,6 +38,57 @@ jobs:
             exit 1
           fi
 
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Integration tests
+        run: cargo test --tests -- --test-threads=4
+        env:
+          NO_COLOR: "1"
+
+  roundtrip:
+    name: Roundtrip Fidelity Matrix
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Roundtrip tests
+        run: cargo test --test roundtrip_test -- --test-threads=1 --nocapture
+        env:
+          NO_COLOR: "1"
+
+  e2e:
+    name: End-to-End Shell Tests
+    runs-on: ubuntu-latest
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build debug binary
+        run: cargo build
+
+      - name: Run e2e test script
+        run: VERBOSE=1 bash scripts/e2e_test.sh
+        env:
+          NO_COLOR: "1"
+
   build:
     name: Release build
     runs-on: ubuntu-latest

@@ -52,6 +52,14 @@ export CLINE_HOME="$TMPDIR_ROOT/cline"
 export AIDER_HOME="$TMPDIR_ROOT/aider"
 export AMP_HOME="$TMPDIR_ROOT/amp"
 export OPENCODE_HOME="$TMPDIR_ROOT/opencode"
+export CHATGPT_HOME="$TMPDIR_ROOT/chatgpt"
+export CLAWDBOT_HOME="$TMPDIR_ROOT/clawdbot"
+export VIBE_HOME="$TMPDIR_ROOT/vibe"
+export FACTORY_HOME="$TMPDIR_ROOT/factory"
+export OPENCLAW_HOME="$TMPDIR_ROOT/openclaw"
+export PI_AGENT_HOME="$TMPDIR_ROOT/pi-agent"
+export XDG_CONFIG_HOME="$TMPDIR_ROOT/xdg-config"
+export XDG_DATA_HOME="$TMPDIR_ROOT/xdg-data"
 export NO_COLOR=1
 
 # ---------------------------------------------------------------------------
@@ -210,7 +218,9 @@ setup_gemini_fixture() {
 
 reset_env() {
     rm -rf "$CLAUDE_HOME" "$CODEX_HOME" "$GEMINI_HOME" "$CURSOR_HOME" \
-        "$CLINE_HOME" "$AIDER_HOME" "$AMP_HOME" "$OPENCODE_HOME"
+        "$CLINE_HOME" "$AIDER_HOME" "$AMP_HOME" "$OPENCODE_HOME" \
+        "$CHATGPT_HOME" "$CLAWDBOT_HOME" "$VIBE_HOME" "$FACTORY_HOME" \
+        "$OPENCLAW_HOME" "$PI_AGENT_HOME"
 }
 
 # ---------------------------------------------------------------------------
