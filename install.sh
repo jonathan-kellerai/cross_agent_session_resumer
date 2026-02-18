@@ -519,7 +519,7 @@ check_installed_version() {
   fi
 
   local installed_version
-  installed_version=$("$DEST/$BINARY_NAME" --version 2>/dev/null | head -1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+  installed_version=$("$DEST/$BINARY_NAME" --version 2>/dev/null | head -1 | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 
   if [ -z "$installed_version" ]; then
     return 1
